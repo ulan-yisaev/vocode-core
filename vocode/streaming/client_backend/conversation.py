@@ -165,3 +165,6 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
             wav_file.writeframes(pcm_data)
         wav_data = wav_io.getvalue()
     return wav_data
+
+def convert_unsigned_8bit_to_signed_16bit(pcm_data):
+    return bytes([(sample - 128) * 256 for sample in pcm_data])

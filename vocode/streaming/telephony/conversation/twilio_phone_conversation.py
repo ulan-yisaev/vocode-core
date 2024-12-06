@@ -12,7 +12,7 @@ from langfuse.media import LangfuseMedia
 from loguru import logger
 
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
-from vocode.streaming.client_backend.conversation import pcm_to_wav
+from vocode.streaming.client_backend.conversation import pcm_to_wav, convert_unsigned_8bit_to_signed_16bit
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import PhoneCallConnectedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
@@ -115,14 +115,10 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-        wav_audio = pcm_to_wav(self.recording, sample_rate=8000, channels=1, sample_width=1)
 
-        buffer = io.BytesIO()  # Create an in-memory bytes buffer
-        wav_audio.export(buffer, format="wav", codec="pcm_s16le")  # Export audio to the buffer
-
-        audio_bytes = buffer.getvalue()
-
-        media = LangfuseMedia(content_type="audio/wav", content_bytes=audio_bytes)
+        signed_16bit_pcm = convert_unsigned_8bit_to_signed_16bit(self.recording)
+        wav_audio = pcm_to_wav(signed_16bit_pcm, sample_rate=8000, channels=1, sample_width=2)
+        media = LangfuseMedia(content_type="audio/wav", content_bytes=wav_audio)
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
     async def _wait_for_twilio_start(self, ws: WebSocket):
