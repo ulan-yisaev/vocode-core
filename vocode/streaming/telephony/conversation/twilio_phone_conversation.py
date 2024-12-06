@@ -120,7 +120,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
         media = LangfuseMedia(content_type="audio/wav", content_bytes=pcm_to_wav(self.recording,
                                                                                  sample_rate=8000,
                                                                                  channels=1,
-                                                                                 sample_width=1
+                                                                                 sample_width=2
                                                                             ))
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
