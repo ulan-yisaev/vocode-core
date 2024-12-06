@@ -118,7 +118,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
         with open("test.txt", "wb") as f:
             f.write(self.recording)
         media = LangfuseMedia(content_type="audio/wav", content_bytes=pcm_to_wav(self.recording,
-                                                                                 sample_rate=48000,
+                                                                                 sample_rate=8000,
                                                                                  channels=1,
                                                                                  sample_width=1
                                                                             ))
