@@ -155,6 +155,7 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
     Returns:
         .wav byte data
     """
+    logger.debug(f" sample rate: {sample_rate}, channels: {channels}, sample width: {sample_width}")
 
     with io.BytesIO() as wav_io:
         with wave.open(wav_io, 'wb') as wav_file:

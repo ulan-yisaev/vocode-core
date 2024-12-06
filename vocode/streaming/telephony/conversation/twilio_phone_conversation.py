@@ -114,13 +114,10 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-        logger.debug("RECORDING")
-        with open("test.txt", "wb") as f:
-            f.write(self.recording)
         media = LangfuseMedia(content_type="audio/wav", content_bytes=pcm_to_wav(self.recording,
-                                                                                 sample_rate=8000,
+                                                                                 sample_rate=16000,
                                                                                  channels=1,
-                                                                                 sample_width=2
+                                                                                 sample_width=1
                                                                             ))
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
