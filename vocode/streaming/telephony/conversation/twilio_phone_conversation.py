@@ -1,4 +1,5 @@
 import base64
+import io
 import json
 import os
 import typing
@@ -114,11 +115,14 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-        media = LangfuseMedia(content_type="audio/wav", content_bytes=pcm_to_wav(self.recording,
-                                                                                 sample_rate=8000,
-                                                                                 channels=1,
-                                                                                 sample_width=2
-                                                                            ))
+        wav_audio = pcm_to_wav(self.recording, sample_rate=8000, channels=1, sample_width=1)
+
+        buffer = io.BytesIO()  # Create an in-memory bytes buffer
+        wav_audio.export(buffer, format="wav", codec="pcm_s16le")  # Export audio to the buffer
+
+        audio_bytes = buffer.getvalue()
+
+        media = LangfuseMedia(content_type="audio/wav", content_bytes=audio_bytes)
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
     async def _wait_for_twilio_start(self, ws: WebSocket):
