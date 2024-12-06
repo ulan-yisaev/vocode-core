@@ -1,4 +1,5 @@
 import io
+import struct
 import typing
 import wave
 from typing import Callable
@@ -167,4 +168,9 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
     return wav_data
 
 def convert_unsigned_8bit_to_signed_16bit(pcm_data):
-    return bytes([(sample - 128) * 256 for sample in pcm_data])
+    signed_16bit_pcm = bytearray()
+    for sample in pcm_data:
+        # Convert unsigned 8-bit to signed 16-bit
+        signed_sample = (sample - 128) * 256
+        signed_16bit_pcm.extend(struct.pack('<h', signed_sample))  # Little-endian 16-bit
+    return bytes(signed_16bit_pcm)

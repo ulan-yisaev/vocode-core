@@ -115,7 +115,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-
+        logger.info(f"Recording bytes: {self.recording[:500]}")
         signed_16bit_pcm = convert_unsigned_8bit_to_signed_16bit(self.recording)
         wav_audio = pcm_to_wav(signed_16bit_pcm, sample_rate=8000, channels=1, sample_width=2)
         media = LangfuseMedia(content_type="audio/wav", content_bytes=wav_audio)
