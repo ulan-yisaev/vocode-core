@@ -116,7 +116,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-        logging.debug(f"Self.recording: {self.recording[:1000]}")
+        logger.debug(f"Self.recording: {self.recording[:1000]}")
         media = LangfuseMedia(content_type="audio/wav", base64_data_uri=self.recording)
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
