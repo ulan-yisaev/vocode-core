@@ -1,6 +1,7 @@
 import base64
 import io
 import json
+import logging
 import os
 import typing
 from enum import Enum
@@ -89,7 +90,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
         )
         self.twilio_sid = twilio_sid
         self.record_call = record_call
-        self.recording = b""
+        self.recording: str = ""
 
     def create_state_manager(self) -> TwilioPhoneConversationStateManager:
         return TwilioPhoneConversationStateManager(self)
@@ -115,10 +116,8 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-        logger.info(f"Recording bytes: {self.recording[:500]}")
-        signed_16bit_pcm = convert_unsigned_8bit_to_signed_16bit(self.recording)
-        wav_audio = pcm_to_wav(signed_16bit_pcm, sample_rate=8000, channels=1, sample_width=2)
-        media = LangfuseMedia(content_type="audio/wav", content_bytes=wav_audio)
+        logging.debug(f"Self.recording: {self.recording[:1000]}")
+        media = LangfuseMedia(content_type="audio/wav", base64_data_uri=self.recording)
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
     async def _wait_for_twilio_start(self, ws: WebSocket):
@@ -142,7 +141,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
             media = data["media"]
             chunk = base64.b64decode(media["payload"])
             self.receive_audio(chunk)
-            self.recording += chunk
+            self.recording += media["payload"]
         if data["event"] == "mark":
             chunk_id = data["mark"]["name"]
             self.output_device.enqueue_mark_message(ChunkFinishedMarkMessage(chunk_id=chunk_id))
