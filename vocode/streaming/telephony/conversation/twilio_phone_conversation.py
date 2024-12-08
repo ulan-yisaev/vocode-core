@@ -10,7 +10,6 @@ from langfuse.media import LangfuseMedia
 from loguru import logger
 
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
-from vocode.streaming.client_backend.conversation import pcm_to_mp3
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import PhoneCallConnectedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
@@ -28,6 +27,7 @@ from vocode.streaming.telephony.conversation.abstract_phone_conversation import 
 )
 from vocode.streaming.transcriber.abstract_factory import AbstractTranscriberFactory
 from vocode.streaming.utils.events_manager import EventsManager
+from vocode.streaming.utils.mp3_helper import ulaw_pcm_to_mp3
 from vocode.streaming.utils.state_manager import TwilioPhoneConversationStateManager
 
 
@@ -114,7 +114,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
         await ws.close(code=1000, reason=None)
         await self.terminate()
 
-        media = LangfuseMedia(content_type="audio/mp3", content_bytes=pcm_to_mp3(self.recording))
+        media = LangfuseMedia(content_type="audio/mp3", content_bytes=ulaw_pcm_to_mp3(self.recording))
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
     async def _wait_for_twilio_start(self, ws: WebSocket):

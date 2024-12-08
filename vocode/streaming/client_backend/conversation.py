@@ -1,15 +1,12 @@
-import audioop
 import io
 import typing
 import wave
 from typing import Callable
 
-import numpy as np
 from fastapi import APIRouter, WebSocket
 from langfuse.decorators import langfuse_context, observe
 from langfuse.media import LangfuseMedia
 from loguru import logger
-from pydub import AudioSegment
 
 from vocode.streaming.agent.base_agent import BaseAgent
 from vocode.streaming.models.client_backend import InputAudioConfig, OutputAudioConfig
@@ -168,20 +165,3 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
             wav_file.writeframes(pcm_data)
         wav_data = wav_io.getvalue()
     return wav_data
-
-def pcm_to_mp3(pcm_data, sample_rate=8000, sample_width=2, channels=1):
-        pcm_lin_data = audioop.ulaw2lin(pcm_data, sample_width)
-
-        # Load PCM data into an AudioSegment
-        audio = AudioSegment(
-            data=pcm_lin_data,
-            sample_width=sample_width,
-            frame_rate=sample_rate,
-            channels=channels
-        )
-
-        # Export audio to MP3 format
-        mp3_buffer = io.BytesIO()
-        audio.export(mp3_buffer, format="mp3", bitrate="32k")
-        return mp3_buffer.getvalue()
-
