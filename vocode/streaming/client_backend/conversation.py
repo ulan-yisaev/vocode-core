@@ -168,13 +168,15 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
         wav_data = wav_io.getvalue()
     return wav_data
 
-def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000):
+def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000, sample_width=2, channels=1, ):
     """
     Convert raw PCM data to MP3 using Pydub, in memory.
 
     Args:
         pcm_data (bytes): The raw PCM audio data.
         sample_rate (int): Sample rate of the PCM data (default: 8000 Hz).
+        sample_width (int): Sample width of the PCM data (default: 2 bytes).
+        channels (int): Number of audio channels (default: 1).
 
     Returns:
         bytes: The MP3 audio data.
@@ -188,9 +190,9 @@ def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000):
     # Load PCM data into an AudioSegment
     audio = AudioSegment.from_raw(
         io.BytesIO(signed_pcm_data),
-        sample_width=1,  # 8-bit audio
+        sample_width=sample_width,  # 8-bit audio
         frame_rate=sample_rate,
-        channels=1  # Mono audio
+        channels=channels  # Mono audio
     )
 
     # Export audio to MP3 format
