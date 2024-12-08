@@ -180,19 +180,20 @@ def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000, sample_width=2, channels=
 
     Returns:
         bytes: The MP3 audio data.
-    """
+
 
     # Convert unsigned 8-bit PCM data to signed 8-bit if necessary
     pcm_array = np.frombuffer(pcm_data, dtype=np.uint8)
     signed_pcm_array = (pcm_array - 128).astype(np.int8)
     signed_pcm_data = signed_pcm_array.tobytes()
+    """
 
     # Load PCM data into an AudioSegment
     audio = AudioSegment.from_raw(
-        io.BytesIO(signed_pcm_data),
-        sample_width=sample_width,  # 8-bit audio
+        io.BytesIO(pcm_data),
+        sample_width=sample_width,
         frame_rate=sample_rate,
-        channels=channels  # Mono audio
+        channels=channels
     )
 
     # Export audio to MP3 format
