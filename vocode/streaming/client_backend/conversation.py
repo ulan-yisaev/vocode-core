@@ -1,3 +1,4 @@
+import audioop
 import io
 import typing
 import wave
@@ -168,35 +169,19 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
         wav_data = wav_io.getvalue()
     return wav_data
 
-def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000, sample_width=2, channels=1, ):
-    """
-    Convert raw PCM data to MP3 using Pydub, in memory.
+def pcm_to_mp3(pcm_data, sample_rate=8000, sample_width=2, channels=1):
+        pcm_lin_data = audioop.ulaw2lin(pcm_data, sample_width)
 
-    Args:
-        pcm_data (bytes): The raw PCM audio data.
-        sample_rate (int): Sample rate of the PCM data (default: 8000 Hz).
-        sample_width (int): Sample width of the PCM data (default: 2 bytes).
-        channels (int): Number of audio channels (default: 1).
+        # Load PCM data into an AudioSegment
+        audio = AudioSegment(
+            data=pcm_lin_data,
+            sample_width=sample_width,
+            frame_rate=sample_rate,
+            channels=channels
+        )
 
-    Returns:
-        bytes: The MP3 audio data.
+        # Export audio to MP3 format
+        mp3_buffer = io.BytesIO()
+        audio.export(mp3_buffer, format="mp3", bitrate="32k")
+        return mp3_buffer.getvalue()
 
-
-    # Convert unsigned 8-bit PCM data to signed 8-bit if necessary
-    pcm_array = np.frombuffer(pcm_data, dtype=np.uint8)
-    signed_pcm_array = (pcm_array - 128).astype(np.int8)
-    signed_pcm_data = signed_pcm_array.tobytes()
-    """
-
-    # Load PCM data into an AudioSegment
-    audio = AudioSegment.from_raw(
-        io.BytesIO(pcm_data),
-        sample_width=sample_width,
-        frame_rate=sample_rate,
-        channels=channels
-    )
-
-    # Export audio to MP3 format
-    mp3_buffer = io.BytesIO()
-    audio.export(mp3_buffer, format="mp3", bitrate="32k")
-    return mp3_buffer.getvalue()
