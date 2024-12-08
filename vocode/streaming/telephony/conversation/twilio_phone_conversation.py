@@ -1,9 +1,6 @@
 import base64
-import io
 import json
-import logging
 import os
-import typing
 from enum import Enum
 from typing import Optional
 
@@ -13,8 +10,7 @@ from langfuse.media import LangfuseMedia
 from loguru import logger
 
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
-from vocode.streaming.client_backend.conversation import pcm_to_wav, convert_unsigned_8bit_to_signed_16bit, \
-    pcm_to_mp3_with_ffmpeg
+from vocode.streaming.client_backend.conversation import pcm_to_mp3_with_ffmpeg
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import PhoneCallConnectedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
