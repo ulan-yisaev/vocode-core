@@ -13,7 +13,8 @@ from langfuse.media import LangfuseMedia
 from loguru import logger
 
 from vocode.streaming.agent.abstract_factory import AbstractAgentFactory
-from vocode.streaming.client_backend.conversation import pcm_to_wav, convert_unsigned_8bit_to_signed_16bit
+from vocode.streaming.client_backend.conversation import pcm_to_wav, convert_unsigned_8bit_to_signed_16bit, \
+    pcm_to_mp3_with_ffmpeg
 from vocode.streaming.models.agent import AgentConfig
 from vocode.streaming.models.events import PhoneCallConnectedEvent
 from vocode.streaming.models.synthesizer import SynthesizerConfig
@@ -90,7 +91,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
         )
         self.twilio_sid = twilio_sid
         self.record_call = record_call
-        self.recording: str = ""
+        self.recording = b""
 
     def create_state_manager(self) -> TwilioPhoneConversationStateManager:
         return TwilioPhoneConversationStateManager(self)
@@ -116,9 +117,8 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
                 break
         await ws.close(code=1000, reason=None)
         await self.terminate()
-        logger.debug(f"Self.recording: {self.recording[:1000]}")
-        data_uri = f"data:application/octet-stream;base64,{self.recording}"
-        media = LangfuseMedia(content_type="audio/wav", base64_data_uri=data_uri)
+
+        media = LangfuseMedia(content_type="audio/mp3", content_bytes=pcm_to_mp3_with_ffmpeg(self.recording))
         langfuse_context.update_current_trace(metadata={"Recording of the User": media})
 
     async def _wait_for_twilio_start(self, ws: WebSocket):
@@ -142,7 +142,7 @@ class TwilioPhoneConversation(AbstractPhoneConversation[TwilioOutputDevice]):
             media = data["media"]
             chunk = base64.b64decode(media["payload"])
             self.receive_audio(chunk)
-            self.recording += media["payload"]
+            self.recording += chunk
         if data["event"] == "mark":
             chunk_id = data["mark"]["name"]
             self.output_device.enqueue_mark_message(ChunkFinishedMarkMessage(chunk_id=chunk_id))

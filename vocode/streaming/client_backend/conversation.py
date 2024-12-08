@@ -4,6 +4,7 @@ import typing
 import wave
 from typing import Callable
 
+import ffmpeg
 from fastapi import APIRouter, WebSocket
 from langfuse.decorators import langfuse_context, observe
 from langfuse.media import LangfuseMedia
@@ -167,10 +168,21 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
         wav_data = wav_io.getvalue()
     return wav_data
 
-def convert_unsigned_8bit_to_signed_16bit(pcm_data):
-    signed_16bit_pcm = bytearray()
-    for sample in pcm_data:
-        # Convert unsigned 8-bit to signed 16-bit
-        signed_sample = (sample - 128) * 256
-        signed_16bit_pcm.extend(struct.pack('<h', signed_sample))  # Little-endian 16-bit
-    return bytes(signed_16bit_pcm)
+def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000):
+    """
+    Convert raw PCM data to MP3 using FFmpeg, in memory.
+
+    Args:
+        pcm_data (bytes): The raw PCM audio data.
+        sample_rate (int): Sample rate of the PCM data (default: 8000 Hz).
+
+    Returns:
+        bytes: The MP3 audio data.
+    """
+    input_buffer = io.BytesIO(pcm_data)
+    output_buffer = io.BytesIO()
+
+    (ffmpeg.input('pipe:0', format='s16le', ar=sample_rate, ac=1).output('pipe:1', format='mp3')
+     .run(input=input_buffer.read(), output=output_buffer, capture_stdout=True, capture_stderr=True))
+
+    return output_buffer.getvalue()
