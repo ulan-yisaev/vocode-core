@@ -1,10 +1,8 @@
 import io
-import struct
 import typing
 import wave
 from typing import Callable
 
-import ffmpeg
 import numpy as np
 from fastapi import APIRouter, WebSocket
 from langfuse.decorators import langfuse_context, observe
