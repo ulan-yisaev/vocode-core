@@ -5,10 +5,12 @@ import wave
 from typing import Callable
 
 import ffmpeg
+import numpy as np
 from fastapi import APIRouter, WebSocket
 from langfuse.decorators import langfuse_context, observe
 from langfuse.media import LangfuseMedia
 from loguru import logger
+from pydub import AudioSegment
 
 from vocode.streaming.agent.base_agent import BaseAgent
 from vocode.streaming.models.client_backend import InputAudioConfig, OutputAudioConfig
@@ -170,7 +172,7 @@ def pcm_to_wav(pcm_data, sample_rate=22050, channels=1, sample_width=2):
 
 def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000):
     """
-    Convert raw PCM data to MP3 using FFmpeg, in memory.
+    Convert raw PCM data to MP3 using Pydub, in memory.
 
     Args:
         pcm_data (bytes): The raw PCM audio data.
@@ -179,10 +181,21 @@ def pcm_to_mp3_with_ffmpeg(pcm_data, sample_rate=8000):
     Returns:
         bytes: The MP3 audio data.
     """
-    input_buffer = io.BytesIO(pcm_data)
-    output_buffer = io.BytesIO()
 
-    (ffmpeg.input('pipe:0', format='s16le', ar=sample_rate, ac=1).output('pipe:1', format='mp3')
-     .run(input=input_buffer.read(), output=output_buffer, capture_stdout=True, capture_stderr=True))
+    # Convert unsigned 8-bit PCM data to signed 8-bit if necessary
+    pcm_array = np.frombuffer(pcm_data, dtype=np.uint8)
+    signed_pcm_array = (pcm_array - 128).astype(np.int8)
+    signed_pcm_data = signed_pcm_array.tobytes()
 
-    return output_buffer.getvalue()
+    # Load PCM data into an AudioSegment
+    audio = AudioSegment.from_raw(
+        io.BytesIO(signed_pcm_data),
+        sample_width=1,  # 8-bit audio
+        frame_rate=sample_rate,
+        channels=1  # Mono audio
+    )
+
+    # Export audio to MP3 format
+    mp3_buffer = io.BytesIO()
+    audio.export(mp3_buffer, format="mp3", bitrate="32k")
+    return mp3_buffer.getvalue()
