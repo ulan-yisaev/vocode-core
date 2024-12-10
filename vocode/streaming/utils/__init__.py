@@ -1,5 +1,7 @@
 import asyncio
-import audioop
+import numpy as np
+from scipy.signal import resample
+from enum import Enum
 import random
 import secrets
 import wave
@@ -21,6 +23,21 @@ def create_loop_in_thread(loop: asyncio.AbstractEventLoop, long_running_task=Non
         loop.run_forever()
 
 
+class AudioEncoding(Enum):
+    LINEAR16 = "LINEAR16"
+    MULAW = "MULAW"
+
+
+def linear_to_mulaw(samples, sample_width=2):
+    """Converts 16-bit linear PCM samples to μ-law encoding."""
+    # μ-law constants
+    mu = 255.0
+    max_value = float(2 ** (8 * sample_width - 1) - 1)
+    samples = np.clip(samples, -max_value, max_value) / max_value  # Normalize to [-1, 1]
+    magnitude = np.log1p(mu * np.abs(samples)) / np.log1p(mu)
+    return (np.sign(samples) * magnitude * 127.5 + 127.5).astype(np.uint8)
+
+
 def convert_linear_audio(
     raw_wav: bytes,
     input_sample_rate=24000,
@@ -28,14 +45,25 @@ def convert_linear_audio(
     output_encoding=AudioEncoding.LINEAR16,
     output_sample_width=2,
 ):
-    # downsample
+    # Determine dtype based on sample width
+    dtype = np.int16 if output_sample_width == 2 else np.int8
+
+    # Convert raw bytes to NumPy array
+    audio_array = np.frombuffer(raw_wav, dtype=dtype)
+
+    # Resample if needed
     if input_sample_rate != output_sample_rate:
-        raw_wav, _ = audioop.ratecv(raw_wav, 2, 1, input_sample_rate, output_sample_rate, None)
+        num_samples = int(len(audio_array) * output_sample_rate / input_sample_rate)
+        audio_array = resample(audio_array, num_samples).astype(dtype)
 
     if output_encoding == AudioEncoding.LINEAR16:
-        return raw_wav
+        # Return the resampled raw audio as bytes
+        return audio_array.tobytes()
     elif output_encoding == AudioEncoding.MULAW:
-        return audioop.lin2ulaw(raw_wav, output_sample_width)
+        # Convert to μ-law and return as bytes
+        return linear_to_mulaw(audio_array, sample_width=output_sample_width).tobytes()
+
+    raise ValueError(f"Unsupported encoding: {output_encoding}")
 
 
 def convert_wav(

@@ -1,5 +1,4 @@
 import asyncio
-import audioop
 import json
 from typing import Optional
 from urllib.parse import urlencode
@@ -64,14 +63,28 @@ class AssemblyAITranscriber(BaseAsyncTranscriber[AssemblyAITranscriberConfig]):
 
     def send_audio(self, chunk):
         if self.transcriber_config.audio_encoding == AudioEncoding.MULAW:
-            sample_width = 1
+            # Convert Mu-Law to Linear PCM manually
             if isinstance(chunk, np.ndarray):
-                chunk = chunk.astype(np.int16)
+                chunk = chunk.astype(np.uint8)  # Ensure the chunk is in 8-bit format for Mu-Law
                 chunk = chunk.tobytes()
-            chunk = audioop.ulaw2lin(chunk, sample_width)
 
+            def mulaw_to_linear(sample):
+                mu = 255
+                sample = ~sample & 0xFF  # Invert the bits
+                sign = -1 if sample & 0x80 else 1
+                magnitude = sample & 0x7F
+                linear = sign * int(32767 * ((1 + mu) ** (magnitude / mu) - 1) / mu)
+                return linear
+
+            # Convert the Mu-Law bytes to Linear PCM
+            ulaw_samples = np.frombuffer(chunk, dtype=np.uint8)
+            pcm_samples = np.array([mulaw_to_linear(sample) for sample in ulaw_samples], dtype=np.int16)
+            chunk = pcm_samples.tobytes()
+
+        # Add the processed chunk to the buffer
         self.buffer.extend(chunk)
 
+        # Check if the buffer size has reached the threshold (in seconds)
         if (
             len(self.buffer) / (2 * self.transcriber_config.sampling_rate)
         ) >= self.transcriber_config.buffer_size_seconds:

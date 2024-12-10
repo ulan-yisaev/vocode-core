@@ -1,5 +1,4 @@
 import asyncio
-import audioop
 import os
 from typing import AsyncGenerator, AsyncIterator, Optional
 
@@ -8,6 +7,7 @@ from loguru import logger
 from pyht import AsyncClient
 from pyht.client import CongestionCtrl, TTSOptions
 from pyht.protos import api_pb2
+import scipy.signal
 
 from vocode.streaming.models.audio import AudioEncoding
 from vocode.streaming.models.message import BaseMessage
@@ -108,14 +108,23 @@ class PlayHtSynthesizerV2(VocodePlayHtSynthesizer):
         )
 
     def _contains_voice_experimental(self, chunk: bytes):
-        pcm = np.frombuffer(
-            (
-                audioop.ulaw2lin(chunk, 2)
-                if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW
-                else chunk
-            ),
-            dtype=np.int16,
-        )
+        if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
+            # Convert Mu-Law to Linear PCM manually
+            def mulaw_to_linear(sample):
+                mu = 255
+                sample = ~sample & 0xFF  # Invert the bits
+                sign = -1 if sample & 0x80 else 1
+                magnitude = sample & 0x7F
+                linear = sign * int(32767 * ((1 + mu) ** (magnitude / mu) - 1) / mu)
+                return linear
+
+            ulaw_samples = np.frombuffer(chunk, dtype=np.uint8)
+            pcm = np.array([mulaw_to_linear(sample) for sample in ulaw_samples], dtype=np.int16)
+        else:
+            # Use Linear PCM directly
+            pcm = np.frombuffer(chunk, dtype=np.int16)
+
+        # Check if the maximum amplitude exceeds the threshold
         return np.max(np.abs(pcm)) > EXPERIMENTAL_VOICE_AMPLITUDE_THRESHOLD
 
     @staticmethod
@@ -132,22 +141,53 @@ class PlayHtSynthesizerV2(VocodePlayHtSynthesizer):
             raise Exception(f"Unsupported audio format: {self.synthesizer_config.audio_encoding}")
 
     async def _downsample_pcm(self, chunk: bytes) -> bytes:
-        downsampled_chunk, _ = audioop.ratecv(
-            chunk,
-            2,
-            1,
-            24000,
-            self.synthesizer_config.sampling_rate,
-            None,
-        )
+        # Convert the PCM chunk (bytes) to a NumPy array
+        input_sampling_rate = 24000
+        target_sampling_rate = self.synthesizer_config.sampling_rate
+
+        # Convert bytes to NumPy array of 16-bit PCM samples
+        pcm_data = np.frombuffer(chunk, dtype=np.int16)
+
+        # Calculate the downsampling factor
+        resampling_factor = target_sampling_rate / input_sampling_rate
+
+        # Resample the PCM data using scipy.signal.resample_poly for efficient resampling
+        downsampled_pcm = scipy.signal.resample_poly(pcm_data, up=int(target_sampling_rate), down=int(input_sampling_rate))
+
+        # Convert the downsampled data back to bytes
+        downsampled_chunk = downsampled_pcm.astype(np.int16).tobytes()
 
         return downsampled_chunk
 
     async def _downsample_mulaw(self, chunk: bytes) -> bytes:
-        pcm_data = audioop.ulaw2lin(chunk, 2)
-        downsampled_pcm_data = await self._downsample_pcm(pcm_data)
-        downsampled_chunk = audioop.lin2ulaw(downsampled_pcm_data, 2)
-        return downsampled_chunk
+        # Convert Mu-Law to Linear PCM manually
+        def mulaw_to_linear(sample):
+            mu = 255
+            sample = ~sample & 0xFF  # Invert the bits
+            sign = -1 if sample & 0x80 else 1
+            magnitude = sample & 0x7F
+            linear = sign * int(32767 * ((1 + mu) ** (magnitude / mu) - 1) / mu)
+            return linear
+
+        ulaw_samples = np.frombuffer(chunk, dtype=np.uint8)
+        pcm_data = np.array([mulaw_to_linear(sample) for sample in ulaw_samples], dtype=np.int16)
+
+        # Downsample the Linear PCM data
+        downsampled_pcm_data = await self._downsample_pcm(pcm_data.tobytes())
+
+        # Convert Linear PCM back to Mu-Law manually
+        def linear_to_mulaw(sample):
+            mu = 255
+            max_val = 32767
+            sign = 0x80 if sample < 0 else 0
+            magnitude = min(abs(sample), max_val)
+            magnitude = int(mu * np.log(1 + magnitude / max_val) / np.log(1 + mu))
+            return (magnitude | sign) ^ 0xFF
+
+        downsampled_pcm_samples = np.frombuffer(downsampled_pcm_data, dtype=np.int16)
+        downsampled_chunk = bytearray(linear_to_mulaw(sample) for sample in downsampled_pcm_samples)
+
+        return bytes(downsampled_chunk)
 
     async def downsample_async_generator(self, async_gen: AsyncGenerator[bytes, None]):
         async for play_ht_chunk in async_gen:

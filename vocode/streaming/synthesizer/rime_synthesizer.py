@@ -1,5 +1,5 @@
 import asyncio
-import audioop
+import numpy as np
 import base64
 import io
 import json
@@ -56,12 +56,12 @@ class RimeSynthesizer(BaseSynthesizer[RimeSynthesizerConfig]):
         )
 
     async def create_speech_uncached(
-        self,
-        message: BaseMessage,
-        chunk_size: int,
-        is_first_text_chunk: bool = False,
-        is_sole_text_chunk: bool = False,
-    ) -> SynthesisResult:
+            self,
+            message: BaseMessage,
+            chunk_size: int,
+            is_first_text_chunk: bool = False,
+            is_sole_text_chunk: bool = False,
+        ) -> SynthesisResult:
         self.total_chars += len(message.text)
         headers = {
             "Authorization": self.api_key,
@@ -84,7 +84,18 @@ class RimeSynthesizer(BaseSynthesizer[RimeSynthesizerConfig]):
             output_bytes = base64.b64decode(audio_content)[WAV_HEADER_LENGTH:]
 
             if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
-                output_bytes = audioop.lin2ulaw(output_bytes, 2)
+                def linear_to_mulaw(sample):
+                    # Mu-Law encoding constants
+                    mu = 255
+                    max_val = 32767  # 16-bit PCM maximum value
+                    sign = 0x80 if sample < 0 else 0
+                    magnitude = min(abs(sample), max_val)
+                    magnitude = int(mu * np.log(1 + magnitude / max_val) / np.log(1 + mu))
+                    return (magnitude | sign) ^ 0xFF
+
+                pcm_samples = np.frombuffer(output_bytes, dtype=np.int16)
+                ulaw_samples = bytearray(linear_to_mulaw(sample) for sample in pcm_samples)
+                output_bytes = bytes(ulaw_samples)
 
             return SynthesisResult(
                 self._chunk_generator(output_bytes, chunk_size),

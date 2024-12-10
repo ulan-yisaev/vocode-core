@@ -1,5 +1,6 @@
 import asyncio
-import audioop
+import numpy as np
+import scipy.signal
 import io
 import math
 import os
@@ -431,10 +432,10 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
         )
 
     async def experimental_mp3_streaming_output_generator(
-        self,
-        response: aiohttp.ClientResponse,
-        chunk_size: int,
-    ) -> AsyncGenerator[SynthesisResult.ChunkResult, None]:
+            self,
+            response: aiohttp.ClientResponse,
+            chunk_size: int,
+        ) -> AsyncGenerator[SynthesisResult.ChunkResult, None]:
         miniaudio_worker_consumer: QueueConsumer = QueueConsumer()
         miniaudio_worker = MiniaudioWorker(
             self.synthesizer_config,
@@ -451,7 +452,7 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
             miniaudio_worker.consume_nonblocking(None)  # sentinel
 
         try:
-            asyncio_create_task(send_chunks())
+            asyncio.create_task(send_chunks())
 
             # Await the output queue of the MiniaudioWorker and yield the wav chunks in another loop
             while True:
@@ -461,9 +462,20 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
                     wav_chunk = encode_as_wav(wav_chunk, self.synthesizer_config)
 
                 if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
-                    wav_chunk = audioop.lin2ulaw(wav_chunk, 2)
+                    def linear_to_mulaw(sample):
+                        mu = 255
+                        max_val = 32767
+                        sign = 0x80 if sample < 0 else 0
+                        magnitude = min(abs(sample), max_val)
+                        magnitude = int(mu * np.log(1 + magnitude / max_val) / np.log(1 + mu))
+                        return (magnitude | sign) ^ 0xFF
+
+                    pcm_samples = np.frombuffer(wav_chunk, dtype=np.int16)
+                    ulaw_samples = bytearray(linear_to_mulaw(sample) for sample in pcm_samples)
+                    wav_chunk = bytes(ulaw_samples)
 
                 yield SynthesisResult.ChunkResult(wav_chunk, is_last)
+
                 # If this is the last chunk, break the loop
                 if is_last:
                     break
@@ -473,19 +485,23 @@ class BaseSynthesizer(Generic[SynthesizerConfigType]):
             await miniaudio_worker.terminate()
 
     def _resample_chunk(
-        self,
-        chunk: bytes,
-        current_sample_rate: int,
-        target_sample_rate: int,
-    ) -> bytes:
-        resampled_chunk, _ = audioop.ratecv(
-            chunk,
-            2,
-            1,
-            current_sample_rate,
-            target_sample_rate,
-            None,
-        )
+            self,
+            chunk: bytes,
+            current_sample_rate: int,
+            target_sample_rate: int,
+        ) -> bytes:
+        # Convert the PCM chunk (bytes) to a NumPy array
+        pcm_data = np.frombuffer(chunk, dtype=np.int16)
+
+        # Compute the upsample and downsample factors
+        up = target_sample_rate
+        down = current_sample_rate
+
+        # Resample the PCM data using scipy.signal.resample_poly
+        resampled_pcm = scipy.signal.resample_poly(pcm_data, up=up, down=down)
+
+        # Convert the resampled data back to bytes
+        resampled_chunk = resampled_pcm.astype(np.int16).tobytes()
 
         return resampled_chunk
 

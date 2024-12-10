@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-import asyncio
-import audioop
+import numpy as np
 from abc import ABC, abstractmethod
 from typing import TYPE_CHECKING, Generic, Optional, TypeVar, Union
 
@@ -43,10 +42,25 @@ class AbstractTranscriber(Generic[TranscriberConfigType], AbstractWorker[bytes])
 
     def create_silent_chunk(self, chunk_size, sample_width=2):
         linear_audio = b"\0" * chunk_size
+
         if self.get_transcriber_config().audio_encoding == AudioEncoding.LINEAR16:
             return linear_audio
         elif self.get_transcriber_config().audio_encoding == AudioEncoding.MULAW:
-            return audioop.lin2ulaw(linear_audio, sample_width)
+            # Convert silent linear PCM to Mu-Law
+            mu = 255
+            max_val = 2**(8 * sample_width - 1) - 1  # Maximum value for given sample width
+
+            def linear_to_mulaw(sample):
+                # Constants for Mu-Law conversion
+                sign = 0x80 if sample < 0 else 0
+                magnitude = min(abs(sample), max_val)
+                magnitude = (mu * np.log(1 + magnitude / max_val) / np.log(1 + mu))
+                return (int(magnitude) | sign) ^ 0xFF
+
+            # Generate an array of silent samples
+            silent_samples = np.frombuffer(linear_audio, dtype=np.int16)
+            ulaw_samples = bytearray(linear_to_mulaw(sample) for sample in silent_samples)
+            return bytes(ulaw_samples)
 
     @abstractmethod
     async def _run_loop(self):

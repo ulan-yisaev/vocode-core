@@ -1,5 +1,4 @@
 import asyncio
-import audioop
 import json
 from typing import Optional
 
@@ -42,11 +41,22 @@ class GladiaTranscriber(BaseAsyncTranscriber[GladiaTranscriberConfig]):
 
     def send_audio(self, chunk):
         if self.transcriber_config.audio_encoding == AudioEncoding.MULAW:
-            sample_width = 1
+            # Convert Mu-Law to Linear PCM manually
             if isinstance(chunk, np.ndarray):
                 chunk = chunk.astype(np.int16)
                 chunk = chunk.tobytes()
-            chunk = audioop.ulaw2lin(chunk, sample_width)
+
+            def mulaw_to_linear(sample: int) -> int:
+                mu = 255
+                sample = ~sample & 0xFF
+                sign = -1 if sample & 0x80 else 1
+                magnitude = sample & 0x7F
+                linear = sign * int(32767 * ((1 + mu) ** (magnitude / mu) - 1) / mu)
+                return linear
+
+            ulaw_samples = np.frombuffer(chunk, dtype=np.uint8)
+            pcm_samples = np.array([mulaw_to_linear(sample) for sample in ulaw_samples], dtype=np.int16)
+            chunk = pcm_samples.tobytes()
 
         self.buffer.extend(chunk)
 

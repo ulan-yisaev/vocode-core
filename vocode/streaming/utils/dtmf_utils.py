@@ -1,4 +1,3 @@
-import audioop
 from enum import Enum
 from typing import Dict, Tuple
 
@@ -58,15 +57,39 @@ class DTMFToneGenerator(Singleton):
     ) -> bytes:
         if (keypad_entry, sampling_rate, audio_encoding) in self.tone_cache:
             return self.tone_cache[(keypad_entry, sampling_rate, audio_encoding)]
+
+        # Retrieve the frequencies for the DTMF tones
         f1, f2 = DTMF_FREQUENCIES[keypad_entry]
+
+        # Generate the tone as a sum of two sine waves
         t = np.linspace(0, duration_seconds, int(sampling_rate * duration_seconds), endpoint=False)
         tone = np.sin(2 * np.pi * f1 * t) + np.sin(2 * np.pi * f2 * t)
-        tone = tone / np.max(np.abs(tone))  # Normalize to [-1, 1]
+
+        # Normalize the tone to the range [-1, 1]
+        tone = tone / np.max(np.abs(tone))
+
+        # Convert the tone to 16-bit PCM format
         pcm = (tone * MAX_INT).astype(np.int16).tobytes()
+
+        # Add silence (zero bytes) at the end
         pcm += b"\0" * int(silence_seconds * sampling_rate * 2)
+
+        # Apply Mu-Law encoding if required
         if audio_encoding == AudioEncoding.MULAW:
-            output = audioop.lin2ulaw(pcm, 2)
+            def linear_to_mulaw(sample: int) -> int:
+                # Constants for Mu-Law conversion
+                mu = 255
+                sign = 0x80 if sample < 0 else 0
+                magnitude = min(abs(sample), MAX_INT)
+                magnitude = (mu * np.log(1 + magnitude / MAX_INT) / np.log(1 + mu))
+                return (int(magnitude) | sign) ^ 0xFF
+
+            pcm_samples = np.frombuffer(pcm, dtype=np.int16)
+            ulaw_samples = bytearray(linear_to_mulaw(sample) for sample in pcm_samples)
+            output = bytes(ulaw_samples)
         else:
             output = pcm
+
+        # Cache the result
         self.tone_cache[(keypad_entry, sampling_rate, audio_encoding)] = output
         return output

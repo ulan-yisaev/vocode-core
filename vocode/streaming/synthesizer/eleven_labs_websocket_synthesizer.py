@@ -1,5 +1,4 @@
 import asyncio
-import audioop
 import base64
 from typing import AsyncGenerator, List, Optional, Tuple
 
@@ -152,12 +151,38 @@ class ElevenLabsWSSynthesizer(
 
     def reduce_chunk_amplitude(self, chunk: bytes, factor: float) -> bytes:
         if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
-            chunk = audioop.ulaw2lin(chunk, 2)
-        pcm = np.frombuffer(chunk, dtype=np.int16)
+            # Convert Mu-Law to Linear PCM
+            def mulaw_to_linear(sample):
+                mu = 255
+                sample = ~sample & 0xFF  # Invert the bits
+                sign = -1 if sample & 0x80 else 1
+                magnitude = sample & 0x7F
+                linear = sign * int(32767 * ((1 + mu) ** (magnitude / mu) - 1) / mu)
+                return linear
+
+            ulaw_samples = np.frombuffer(chunk, dtype=np.uint8)
+            pcm = np.array([mulaw_to_linear(sample) for sample in ulaw_samples], dtype=np.int16)
+        else:
+            # Convert directly to PCM if it's Linear PCM
+            pcm = np.frombuffer(chunk, dtype=np.int16)
+
+        # Reduce amplitude
         pcm = (pcm * factor).astype(np.int16)
         pcm_bytes = pcm.tobytes()
+
         if self.synthesizer_config.audio_encoding == AudioEncoding.MULAW:
-            return audioop.lin2ulaw(pcm_bytes, 2)
+            # Convert Linear PCM back to Mu-Law
+            def linear_to_mulaw(sample):
+                mu = 255
+                max_val = 32767
+                sign = 0x80 if sample < 0 else 0
+                magnitude = min(abs(sample), max_val)
+                magnitude = int(mu * np.log(1 + magnitude / max_val) / np.log(1 + mu))
+                return (magnitude | sign) ^ 0xFF
+
+            pcm_samples = np.frombuffer(pcm_bytes, dtype=np.int16)
+            ulaw_samples = bytearray(linear_to_mulaw(sample) for sample in pcm_samples)
+            return bytes(ulaw_samples)
         else:
             return pcm_bytes
 
